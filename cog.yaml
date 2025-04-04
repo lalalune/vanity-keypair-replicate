@@ -1,0 +1,14 @@
+build:
+  gpu: true
+  cuda: "11.8"
+  system_packages:
+    - "cuda-toolkit-11-8"
+    - "build-essential"
+    - "libc6-dev"
+  python_packages:
+    - "numpy"
+  # Enable CUDA in the Replicate environment 
+  run:
+    - cargo build --release --features cuda
+
+predict: "cargo run --release --features cuda" 

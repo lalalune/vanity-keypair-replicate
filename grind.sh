@@ -1,0 +1,2 @@
+#!/bin/bash
+cargo cog predict -i base="11111111111111111111111111111111" -i owner="BPFLoaderUpgradeab1e11111111111111111111111" -i target="auto" -i target_type=suffix -i num_results=10 -i case_insensitive=false
