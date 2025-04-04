@@ -409,9 +409,9 @@ dependencies = [
 
 [[package]]
 name = "cog-rust"
-version = "1.0.10"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e611e4075f681505af0f3429eb7bc382b73418345cc76c62383e504790f5e9f"
+checksum = "dca364b1050091cc1024c04c3feb9d75456f87c771d7d5319be4ac4f3aa28a00"
 dependencies = [
  "aide",
  "anyhow",
@@ -2481,7 +2481,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
-name = "vanity-replicate"
+name = "vanity-keypairs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2495,6 +2495,7 @@ dependencies = [
  "rayon",
  "schemars",
  "serde",
+ "serde_json",
  "sha2",
  "tokio",
 ]

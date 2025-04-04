@@ -1,10 +1,6 @@
 # Solana Vanity Address Generator for Replicate
 
-This project provides a Solana vanity address generator that can be deployed on Replicate to leverage cloud GPU resources for faster address generation.
-
-# To Test
-
-`cargo build && bash grind.sh`
+This project provides a Solana vanity address generator that can be deployed on Replicate to leverage cloud GPU resources for faster address generation. It uses Python Cog to interface with the Replicate API while leveraging performant Rust code for the core generation logic.
 
 ## Features
 
@@ -43,27 +39,45 @@ This project provides a Solana vanity address generator that can be deployed on 
 }
 ```
 
-## Local Development (Mac)
+## Local Development & Testing (Mac/Linux with Cog)
 
-For Mac users, you can run the CPU implementation locally:
+The primary way to build and test the model locally is using the Cog CLI.
 
-```bash
-# Build without CUDA support
-cargo build --release 
+1.  **Install Cog:**
+    ```bash
+    pip install cog
+    ```
+2.  **Build Rust & Run Cog Predict:**
+    The `test-cog.sh` script handles building the underlying Rust code and running a local prediction using Cog.
+    ```bash
+    bash test-cog.sh
+    ```
+    This script essentially performs:
+    ```bash
+    # Build the Rust binary needed by the Python Cog wrapper
+    cargo build --release
 
-# Run locally with test input
-cargo run --release -- predict -i base="11111111111111111111111111111111" -i owner="BPFLoaderUpgradeab1e11111111111111111111111" -i target="auto" -i case_insensitive=true -i target_type="suffix"
-```
-
-The CPU implementation will utilize all available cores on your Mac for parallel processing.
+    # Run the prediction via Cog (which uses predict.py)
+    cog predict -i target="auto" -i target_type="suffix"
+    ```
+    The Rust code utilizes available CPU cores for parallel processing during local execution.
 
 ## Deployment to Replicate (with GPU)
 
-1. Install the Cog CLI: `pip install cog`
-2. Push to Replicate: `cog push your-username/vanity-generator`
+Use the Cog CLI to deploy the model to Replicate:
 
-When deployed to Replicate, the model will automatically use GPU acceleration if available.
+1.  **Login to Cog (if needed):**
+    ```bash
+    cog login
+    ```
+2.  **Push to Replicate:**
+    Replace `your-username/vanity-generator` with your desired Replicate model name.
+    ```bash
+    cog push r8.im/your-username/vanity-generator
+    ```
+
+When deployed to Replicate, the model will automatically attempt to use GPU acceleration if available in the environment.
 
 ## Testing with Node.js
 
-See the `/test` directory for a Node.js script that demonstrates how to interact with the deployed model. 
+See the `/test` directory for a Node.js script that demonstrates how to interact with the deployed model on Replicate. 

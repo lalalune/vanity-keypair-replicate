@@ -1,14 +1,19 @@
 build:
   gpu: true
   cuda: "11.8"
+  python_version: "3.10"
   system_packages:
-    - "cuda-toolkit-11-8"
-    - "build-essential"
-    - "libc6-dev"
-  python_packages:
-    - "numpy"
-  # Enable CUDA in the Replicate environment 
+    - build-essential
+    - curl
+    - pkg-config
+    - libssl-dev
   run:
-    - cargo build --release --features cuda
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - . "$HOME/.cargo/env"
+  python_packages:
+    - "loguru==0.7.2"
 
-predict: "cargo run --release --features cuda" 
+predict: "predict.py:Predictor"
+
+# This defines where the model will be pushed
+image: "r8.im/lalalune/vanity-keypairs" 

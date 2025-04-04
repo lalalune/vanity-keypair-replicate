@@ -5,7 +5,7 @@
 #include <cuda.h>
 
 // SHA-256 Constants
-const uint32_t K[64] = {
+__constant__ uint32_t K[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
     0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -16,8 +16,8 @@ const uint32_t K[64] = {
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 };
 
-// BS58 charset
-const char BS58_CHARS[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+// BS58 charset - Removed as it's unused
+// const char BS58_CHARS[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 #define ROTRIGHT(a, b) (((a) >> (b)) | ((a) << (32-(b))))
 #define CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
@@ -156,7 +156,8 @@ __global__ void vanity_kernel(
     const uint8_t *target,
     uint32_t target_len,
     bool is_prefix,
-    bool case_insensitive
+    bool case_insensitive,
+    int *d_found_flag
 ) {
     uint32_t thread_idx = blockIdx.x * blockDim.x + threadIdx.x;
     uint64_t attempts = 0;
@@ -179,7 +180,7 @@ __global__ void vanity_kernel(
     uint8_t hash[32];
     bool found = false;
     
-    for (int iter = 0; iter < ATTEMPTS_PER_THREAD && !found; iter++) {
+    for (int iter = 0; iter < ATTEMPTS_PER_THREAD && atomicAdd(d_found_flag, 0) == 0; iter++) {
         // Update seed for this attempt
         for (int i = 0; i < 16; i++) {
             seed[i] = (seed[i] + iter) % 256;
@@ -191,35 +192,41 @@ __global__ void vanity_kernel(
         
         // Check if this matches our target
         if (check_match(hash, target, target_len, is_prefix, case_insensitive)) {
-            // Copy the result to the output buffer if we found a match
-            // Output format: [seed(16 bytes), attempts(8 bytes)]
-            for (int i = 0; i < 16; i++) {
-                out[i] = seed[i];
-            }
+            // Attempt to claim the find
+            int old_flag = atomicCAS(d_found_flag, 0, 1);
             
-            // Store attempts count (little-endian)
-            attempts = (uint64_t)iter + 1;
-            for (int i = 0; i < 8; i++) {
-                out[16 + i] = (attempts >> (i * 8)) & 0xFF;
+            if (old_flag == 0) { // Only write if we were the first
+                // Copy the result to the output buffer if we found a match
+                // Output format: [seed(16 bytes), attempts(8 bytes)]
+                for (int i = 0; i < 16; i++) {
+                    out[i] = seed[i];
+                }
+                
+                // Store attempts count (little-endian)
+                attempts = (uint64_t)iter + 1;
+                for (int i = 0; i < 8; i++) {
+                    out[16 + i] = (attempts >> (i * 8)) & 0xFF;
+                }
             }
-            
-            found = true;
+            // Even if we weren't first, break this thread's loop as a match was found globally
+            break; 
         }
         
-        attempts++;
+        // Note: attempts is local to thread, not incremented here anymore
+        // The attempt count written is the local iter count when found.
     }
 }
 
 extern "C" {
     void vanity_round(
-        uint32_t gpus,
         const uint8_t *seed,
         const uint8_t *base,
         const uint8_t *owner,
         const uint8_t *target,
         uint64_t target_len,
         uint8_t *out,
-        bool case_insensitive
+        bool case_insensitive,
+        bool is_prefix
     ) {
         // Setup device memory
         uint8_t *d_out = nullptr;
@@ -227,12 +234,18 @@ extern "C" {
         uint8_t *d_owner = nullptr;
         uint8_t *d_seed = nullptr;
         uint8_t *d_target = nullptr;
+        int *d_found_flag = nullptr; // Pointer for atomic flag
         
         cudaMalloc(&d_out, 24); // 16 bytes for seed + 8 bytes for attempt count
         cudaMalloc(&d_base, 32);
         cudaMalloc(&d_owner, 32);
         cudaMalloc(&d_seed, 32);
         cudaMalloc(&d_target, target_len);
+        cudaMalloc(&d_found_flag, sizeof(int)); // Allocate memory for the flag
+
+        // Initialize d_out and d_found_flag to 0
+        cudaMemset(d_out, 0, 24);
+        cudaMemset(d_found_flag, 0, sizeof(int));
         
         cudaMemcpy(d_base, base, 32, cudaMemcpyHostToDevice);
         cudaMemcpy(d_owner, owner, 32, cudaMemcpyHostToDevice);
@@ -247,10 +260,14 @@ extern "C" {
             d_seed,
             d_target,
             target_len,
-            true, // is_prefix
-            case_insensitive
+            is_prefix,
+            case_insensitive,
+            d_found_flag
         );
         
+        // Wait for kernel completion
+        cudaDeviceSynchronize();
+
         // Copy results back
         cudaMemcpy(out, d_out, 24, cudaMemcpyDeviceToHost);
         
@@ -260,5 +277,6 @@ extern "C" {
         cudaFree(d_owner);
         cudaFree(d_seed);
         cudaFree(d_target);
+        cudaFree(d_found_flag); // Free the flag memory
     }
 } 
